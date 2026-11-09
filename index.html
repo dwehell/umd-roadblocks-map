@@ -1,175 +1,294 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>UMD Campus Disturbance Map (Prototype)</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMD Campus Disturbance Map</title>
 
-  <!-- Leaflet's CSS file. This gives the map its default look (zoom buttons, popups, etc). -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
   <style>
-    /* Basic page styling so the map fills the screen nicely */
     body {
       margin: 0;
       font-family: Arial, sans-serif;
     }
+
     #map {
-      height: 100vh; /* map takes up the full height of the browser window */
+      height: 100vh;
       width: 100%;
     }
+
     #legend {
       position: absolute;
       top: 10px;
       right: 10px;
       background: white;
-      padding: 10px 14px;
+      padding: 12px;
       border-radius: 6px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-      z-index: 1000; /* make sure it sits above the map */
+      box-shadow: 0 1px 5px #777;
+      z-index: 1000;
       font-size: 14px;
     }
-    #legend span.dot {
+
+    .dot {
       display: inline-block;
       width: 12px;
       height: 12px;
       border-radius: 50%;
       margin-right: 6px;
     }
+
+    #status {
+      position: absolute;
+      bottom: 25px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      z-index: 1000;
+      font-size: 13px;
+      max-width: 290px;
+    }
   </style>
 </head>
+
 <body>
 
-  <!-- This empty div is where Leaflet will draw the map -->
   <div id="map"></div>
 
-  <!-- A small legend so viewers know what red vs gray markers mean -->
   <div id="legend">
-    <div><span class="dot" style="background:red;"></span>Active disturbance</div>
-    <div><span class="dot" style="background:gray;"></span>Expired / resolved</div>
+    <div>
+      <span class="dot" style="background:red"></span>
+      Active disturbance
+    </div>
+    <div>
+      <span class="dot" style="background:gray"></span>
+      Expired / resolved
+    </div>
   </div>
 
-  <!-- Leaflet's JavaScript library. This gives us the map functions we use below. -->
+  <div id="status">Loading disturbances...</div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // -----------------------------------------------------------
-    // STEP 1: Create the map, centered on the University of Maryland
-    // -----------------------------------------------------------
-    // 38.9869, -76.9426 is roughly the center of UMD's College Park campus.
-    // The "13" is the starting zoom level (higher = more zoomed in).
-    const map = L.map('map').setView([38.9869, -76.9426], 15);
+    // Create UMD map
+    const map = L.map("map").setView(
+      [38.9869, -76.9426], 15
+    );
 
-    // Add the actual map imagery (tiles) from Esri's free public tile service.
-    // This does not require an API key or account. We avoid OpenStreetMap's
-    // own tile servers and CartoDB here because both now block or require
-    // a key for requests coming from sandboxed/embedded browser previews.
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, OpenStreetMap contributors',
-      maxZoom: 19
-    }).addTo(map);
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      {
+        attribution: "Tiles &copy; Esri",
+        maxZoom: 19
+      }
+    ).addTo(map);
 
-    // -----------------------------------------------------------
-    // STEP 2: Load disturbance data from disturbances.json
-    // -----------------------------------------------------------
-    // Instead of writing the data directly in this file, we now
-    // "fetch" (download) it from disturbances.json, which sits in
-    // the same folder as this HTML file. This is the key change
-    // that lets the map update automatically: the scraper script
-    // (scrape_umd_disturbances.py) rewrites disturbances.json on a
-    // schedule, and this page always shows whatever is currently
-    // in that file — no code changes needed when data updates.
-    //
-    // NOTE: because this uses fetch(), opening this file by just
-    // double-clicking it may not work in every browser (some
-    // browsers block fetch() for local "file://" pages for security
-    // reasons). If markers don't show up, run a tiny local server
-    // instead, for example (from a terminal, in this folder):
-    //   python -m http.server 8000
-    // then visit http://localhost:8000 in your browser.
-    fetch('disturbances.json')
-      .then(response => response.json())
-      .then(data => {
-        renderDisturbances(data);
-      })
-      .catch(error => {
-        console.error('Could not load disturbances.json:', error);
-        alert('Could not load disturbances.json. If you opened this file directly (file://), try running a local server instead — see the comment in the code.');
-      });
+    const statusBox = document.getElementById("status");
+    const markers = L.layerGroup().addTo(map);
 
-    // -----------------------------------------------------------
-    // STEP 3: Figure out if each disturbance is still active or expired
-    // -----------------------------------------------------------
-    // We compare today's date to each disturbance's end_date.
-    // If today is AFTER the end_date, the disturbance is expired.
-    const today = new Date();
-
-    function isExpired(disturbance) {
-      const endDate = new Date(disturbance.end_date);
-      return today > endDate;
+    // Escape text from external sources
+    function escapeHTML(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
-    // -----------------------------------------------------------
-    // STEP 4: Loop through every disturbance and add it to the map
-    // -----------------------------------------------------------
-    // This is wrapped in a function now (instead of running directly)
-    // because it needs to wait until STEP 2 has finished downloading
-    // the data from disturbances.json.
-    function renderDisturbances(disturbances) {
-    disturbances.forEach(function (d) {
-      const expired = isExpired(d);
+    // Check whether a disturbance has ended
+    function isExpired(d) {
+      if (
+        d.status === "resolved" ||
+        d.status === "expired" ||
+        d.status === "completed"
+      ) {
+        return true;
+      }
 
-      // Pick a marker color: gray if expired, red if still active.
-      const markerColor = expired ? "gray" : "red";
+      if (!d.end_date) {
+        return false;
+      }
 
-      // NOTE: We previously drew the full affected area as a line/polygon
-      // here. That has been removed for now (per request) so only the
-      // clickable dot shows. If/when real path data is available from
-      // the pipeline, this is where a line or polygon could be added back.
+      const end = new Date(d.end_date + "T23:59:59");
 
-      // Create a simple colored circle marker instead of the default
-      // Leaflet pin, so color-coding is easy to see at a glance.
-      // cursor: 'pointer' makes it obvious (visually) that the dot is clickable.
-      // This dot sits at the "anchor point" of the closure and is what
-      // people click to see the full details in a popup.
-      const marker = L.circleMarker([d.lat, d.lng], {
-        radius: 9,
-        fillColor: markerColor,
-        color: "#333",       // outline color
-        weight: 1,
-        fillOpacity: expired ? 0.5 : 0.9 // expired markers look faded
-      }).addTo(map);
+      if (isNaN(end.getTime())) {
+        return false;
+      }
 
-      // Make the mouse cursor change to a "hand" when hovering over a dot,
-      // so users know it can be clicked.
-      marker.on('mouseover', function () {
-        marker.setStyle({ weight: 3 }); // thicken outline on hover
+      return new Date() > end;
+    }
+
+    // Validate coordinates
+    function validCoordinates(d) {
+      if (
+        d.lat === null ||
+        d.lng === null ||
+        d.lat === undefined ||
+        d.lng === undefined ||
+        d.lat === "" ||
+        d.lng === ""
+      ) {
+        return false;
+      }
+
+      const lat = Number(d.lat);
+      const lng = Number(d.lng);
+
+      return (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180
+      );
+    }
+
+    // Draw disturbances
+    function renderDisturbances(data) {
+      markers.clearLayers();
+
+      if (!Array.isArray(data)) {
+        throw new Error("Expected a JSON array.");
+      }
+
+      let displayed = 0;
+      let missingCoordinates = 0;
+      let unverified = 0;
+
+      data.forEach(function(d) {
+
+        // Skip invalid records
+        if (!d || typeof d !== "object") {
+          return;
+        }
+
+        // Do not present unverified data as confirmed
+        if (
+          d.needs_review === true ||
+          d.status === "needs_verification"
+        ) {
+          unverified++;
+          return;
+        }
+
+        // Skip entries without GPS coordinates
+        if (!validCoordinates(d)) {
+          missingCoordinates++;
+          return;
+        }
+
+        const expired = isExpired(d);
+        const color = expired ? "gray" : "red";
+
+        const marker = L.circleMarker(
+          [Number(d.lat), Number(d.lng)],
+          {
+            radius: 9,
+            fillColor: color,
+            color: "#333",
+            weight: 1,
+            fillOpacity: expired ? 0.5 : 0.9
+          }
+        ).addTo(markers);
+
+        marker.on("mouseover", function() {
+          marker.setStyle({ weight: 3 });
+        });
+
+        marker.on("mouseout", function() {
+          marker.setStyle({ weight: 1 });
+        });
+
+        const name = escapeHTML(d.name || "Unnamed disturbance");
+        const type = escapeHTML(d.type || "Disturbance");
+        const description = escapeHTML(d.description || "No description");
+        const area = escapeHTML(d.area || "Unknown area");
+        const start = escapeHTML(d.start_date || "Unknown");
+        const end = escapeHTML(d.end_date || "Not specified");
+
+        const statusText = expired
+          ? "Expired / Resolved"
+          : "Active / End date not reached";
+
+        const source = typeof d.source_url === "string" &&
+          /^https?:\/\//i.test(d.source_url)
+          ? `<a href="${escapeHTML(d.source_url)}"
+                 target="_blank" rel="noopener noreferrer">
+               Original notice
+             </a>`
+          : "";
+
+        const popup = `
+          <div style="min-width:200px">
+            <strong style="font-size:16px">${name}</strong>
+            <hr>
+            <b>Type:</b> ${type}<br>
+            <b>Area:</b> ${area}<br>
+            <b>Description:</b> ${description}<br>
+            <b>Start:</b> ${start}<br>
+            <b>End:</b> ${end}<br>
+            <b>Status:</b> ${statusText}<br>
+            ${source}
+          </div>
+        `;
+
+        marker.bindPopup(popup);
+        displayed++;
       });
-      marker.on('mouseout', function () {
-        marker.setStyle({ weight: 1 });
-      });
 
-      // Build the text that shows up when someone clicks the marker.
-      // The name and type are shown first/largest since that's the
-      // main thing users want to know at a glance.
-      const statusText = expired ? "Resolved / Expired" : "Active";
-      const popupContent = `
-        <div style="min-width:180px;">
-          <strong style="font-size:15px;">${d.name}</strong><br>
-          <span style="text-transform:capitalize; color:${markerColor === 'red' ? '#b30000' : '#555'}; font-weight:bold;">
-            ${d.type}
-          </span><br>
-          <hr style="margin:6px 0;">
-          ${d.description}<br>
-          <small>${d.start_date} to ${d.end_date}</small><br>
-          <strong>Status: ${statusText}</strong>
-        </div>
+      statusBox.innerHTML = `
+        <b>UMD Disturbance Map</b><br>
+        Total notices: ${data.length}<br>
+        Mapped: ${displayed}<br>
+        Missing coordinates: ${missingCoordinates}<br>
+        Awaiting verification: ${unverified}
       `;
 
-      // bindPopup + clicking the marker (Leaflet's default behavior)
-      // is what makes the dot "interactive" — clicking it opens this popup.
-      marker.bindPopup(popupContent);
-    });
-    } // end of renderDisturbances()
+      if (displayed === 0) {
+        statusBox.innerHTML += `
+          <br><br>
+          No verified disturbances with GPS
+          coordinates are available.
+        `;
+      }
+    }
+
+    // Load real data from GitHub Pages
+    async function loadDisturbances() {
+      try {
+        const response = await fetch(
+          "./disturbances.json?t=" + Date.now(),
+          { cache: "no-store" }
+        );
+
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        const data = await response.json();
+        renderDisturbances(data);
+
+      } catch (error) {
+        console.error("Error loading disturbances:", error);
+
+        statusBox.textContent =
+          "Could not load disturbance data. Check the JSON file.";
+
+      }
+    }
+
+    // Load immediately
+    loadDisturbances();
+
+    // Refresh every 5 minutes while page is open
+    setInterval(loadDisturbances, 300000);
+
   </script>
 
 </body>
