@@ -1,22 +1,6 @@
 [
   {
     "id": 1,
-    "name": "Brendan Iribe Center",
-    "area": "North Side Roof Deck Entrance 1299",
-    "lat": 38.9891607057353,
-    "lng": -76.9364438800535,
-    "type": "Concrete Work",
-    "description": "Minimal concrete repairs will be performed near the north side, upper-level rooftop deck entrance 1299 of the Brendan Iribe Center.  No impacts are expected to entrance accessibility or pedestrian traffic as a result of the work performed.",
-    "impact_type": "Planned",
-    "start_date": "2026-11-06",
-    "end_date": "2026-11-06",
-    "needs_review": false,
-    "coordinate_source": "building_location",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "expired"
-  },
-  {
-    "id": 2,
     "name": "Charles Hall",
     "area": "Southeast Exterior Area",
     "lat": null,
@@ -32,7 +16,7 @@
     "status": "needs_verification"
   },
   {
-    "id": 3,
+    "id": 2,
     "name": "Washington Quad",
     "area": "Area south of Prince George's Hall and northeast of Baltimore Hall.",
     "lat": null,
@@ -48,7 +32,7 @@
     "status": "needs_verification"
   },
   {
-    "id": 4,
+    "id": 3,
     "name": "**Completed** Cambridge Community Quad",
     "area": "Bel Air Hall, south side of the building; Centreville Hall, west side of the building; Cambridge Hall, north side of the building; Cumberland Hall, east side of the building.",
     "lat": null,
@@ -64,7 +48,7 @@
     "status": "active"
   },
   {
-    "id": 5,
+    "id": 4,
     "name": "Northgate Pedestrian Bridge",
     "area": "Crossing Paint Branch stream near The Varsity **See map attached**",
     "lat": null,
@@ -80,7 +64,7 @@
     "status": "needs_verification"
   },
   {
-    "id": 6,
+    "id": 5,
     "name": "Plaza between the Wind Tunnel Building and the Computer Science Instructional Center",
     "area": "Exterior Plaza",
     "lat": null,
@@ -96,7 +80,7 @@
     "status": "active"
   },
   {
-    "id": 7,
+    "id": 6,
     "name": "Regents Drive",
     "area": "South of Stadium Drive Intersection",
     "lat": 38.9895,
@@ -112,7 +96,7 @@
     "status": "active"
   },
   {
-    "id": 8,
+    "id": 7,
     "name": "Parking Lot SS1",
     "area": "Parking lot between Eppley Recreation Center and School of Public Health",
     "lat": 38.9905,
@@ -128,7 +112,7 @@
     "status": "active"
   },
   {
-    "id": 9,
+    "id": 8,
     "name": "Campus Drive",
     "area": "From Benjamin Building to Parren J. Mitchell Art-Sociology Building.  Repaving the roadway 11/7; restriping the roadway 11/9",
     "lat": 38.9869,
@@ -144,7 +128,7 @@
     "status": "active"
   },
   {
-    "id": 10,
+    "id": 9,
     "name": "Stadium Drive",
     "area": "South of the E.A. Fernandez IDEA Factory Building, between the Chemistry Lane and Engineering Drive Intersection to the Stanley Zupnik Hall loading dock.",
     "lat": 38.9905,
@@ -160,7 +144,7 @@
     "status": "active"
   },
   {
-    "id": 11,
+    "id": 10,
     "name": "Purple Line, Campus-wide",
     "area": "**See attached map for impacted roadways and sidewalks**",
     "lat": 38.9869,
@@ -176,7 +160,7 @@
     "status": "active"
   },
   {
-    "id": 12,
+    "id": 11,
     "name": "Parking Lot Z",
     "area": "Southeast corner of the parking lot.",
     "lat": 38.995,
