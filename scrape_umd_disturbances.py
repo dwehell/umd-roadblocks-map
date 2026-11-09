@@ -1,164 +1,392 @@
-"""Scrape UMD Facilities service impacts for OUTDOOR mobility disruptions.
 
-Install: py -m pip install requests beautifulsoup4
-Run:     py scrape_umd_disturbances.py
-Output:  disturbances.json (in the current working directory)
+"""UMD outdoor disturbance scraper with location matching.
 
-Only explicit outdoor access disruptions are retained. Review output before
-publishing: building coordinates and street aliases are approximate points,
-not exact closure geometry. This is NOT a scraper for maps.umd.edu.
+Install:
+    pip install requests beautifulsoup4
+
+Run:
+    python scrape_umd_disturbances.py
+
+Files:
+    disturbances.json       Automatically generated
+    verified_locations.json Optional manual location approvals
+
+Only verified coordinates are published as map-ready.
+Building coordinates are approximate reference points, not
+exact roadblock locations.
 """
+
 import json
 import re
 import difflib
+import hashlib
 from datetime import datetime, date
 from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 
-SOURCE_URL = "https://facilities.umd.edu/info-resources/service-impacts"
-UMD_BUILDINGS_API = "https://api.umd.io/v1/map/buildings"
+BASE = Path(__file__).resolve().parent
 
-ALIAS_OVERRIDES = {
+SOURCE_URL = (
+    "https://facilities.umd.edu/info-resources/service-impacts"
+)
+
+BUILDINGS_API = "https://api.umd.io/v1/map/buildings"
+
+OUTPUT = BASE / "disturbances.json"
+VERIFIED_FILE = BASE / "verified_locations.json"
+
+# These are approximate reference points only.
+# They must NOT be treated as verified closure locations.
+ALIASES = {
     "regents drive": (38.9895, -76.9415),
     "parking lot ss1": (38.9905, -76.9455),
     "campus drive": (38.9869, -76.9426),
     "stadium drive": (38.9905, -76.9395),
-    "purple line, campus-wide": (38.9869, -76.9426),
     "parking lot z": (38.9950, -76.9480),
 }
 
-# Only include entries explicitly describing outdoor mobility/access impacts.
-OUTDOOR_ACCESS = re.compile(
-    r"\b(?:road(?:way)?|street|sidewalk|walkway|path(?:way)?|pedestrian|"
-    r"crosswalk|intersection|bridge|trail|bike\s*lane|cycle\s*track|"
-    r"parking\s*(?:lot|garage|area)|bus\s*stop|shuttle\s*stop|"
-    r"vehicle\s*access|traffic|detour|outdoor\s*access)\b", re.I
-)
-ACCESS_IMPACT = re.compile(
-    r"\b(?:clos(?:ed|ure|ing)|block(?:ed|age|ing)?|restrict(?:ed|ion|ions)?|"
-    r"detour(?:ed|s)?|inaccessible|impassable|rerout(?:e|ed|ing)|"
-    r"repair(?:s)?|construction|excavat(?:ion|ing)|resurfac(?:ing|e)|"
-    r"pav(?:e|ing|ement)|temporarily unavailable|partial(?:ly)?\s+closed)\b", re.I
-)
-INDOOR_ONLY = re.compile(
-    r"\b(?:elevator|restroom|bathroom|hvac|air\s*conditioning|"
-    r"heating|interior|indoors?|classroom|office|lab(?:oratory)?|"
-    r"water\s*(?:outage|shutdown)|power\s*(?:outage|shutdown)|"
-    r"fire\s*alarm|domestic\s*water)\b", re.I
+OUTDOOR = re.compile(
+    r"\b(?:road(?:way)?|street|sidewalk|walkway|"
+    r"path(?:way)?|pedestrian|crosswalk|intersection|"
+    r"bridge|trail|bike\s*lane|parking\s*(?:lot|garage|area)|"
+    r"bus\s*stop|shuttle\s*stop|vehicle\s*access|"
+    r"traffic|detour|outdoor\s*access)\b",
+    re.I
 )
 
-
-def is_outdoor_disturbance(location, area, repair_type, description):
-    """Conservative filter; ambiguous rows are excluded for human review."""
-    impact = " ".join([area, repair_type, description])
-    full = " ".join([location, impact])
-    if not OUTDOOR_ACCESS.search(full) or not ACCESS_IMPACT.search(impact):
-        return False
-    # Reject obvious indoor-only issues unless outdoor access is explicit in impact text.
-    if INDOOR_ONLY.search(impact) and not OUTDOOR_ACCESS.search(impact):
-        return False
-    return True
+IMPACT = re.compile(
+    r"\b(?:clos(?:ed|ure|ing)|block(?:ed|age|ing)?|"
+    r"restrict(?:ed|ion|ions)?|detour(?:ed|s)?|"
+    r"inaccessible|impassable|rerout(?:e|ed|ing)|"
+    r"repair(?:s)?|construction|excavat(?:ion|ing)|"
+    r"resurfac(?:ing|e)|pav(?:e|ing|ement)|"
+    r"temporarily unavailable|partial(?:ly)?\s+closed)\b",
+    re.I
+)
 
 
-def fetch_building_directory():
-    directory = {}
+def normalize(value):
+    value = str(value or "").lower().strip()
+    value = re.sub(r"[^\w\s]", " ", value)
+    return " ".join(value.split())
+
+
+def valid_coords(lat, lng):
     try:
-        response = requests.get(UMD_BUILDINGS_API, timeout=20)
+        if lat is None or lng is None:
+            return False
+        if str(lat).strip() == "" or str(lng).strip() == "":
+            return False
+
+        lat = float(lat)
+        lng = float(lng)
+
+        return (
+            38.8 <= lat <= 39.1
+            and -77.1 <= lng <= -76.8
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+def fetch_buildings():
+    directory = {}
+
+    try:
+        response = requests.get(
+            BUILDINGS_API,
+            timeout=20
+        )
         response.raise_for_status()
-        for building in response.json():
-            name = str(building.get("name") or "").strip().lower()
-            lat, lng = building.get("lat"), building.get("long")
-            if name and lat is not None and lng is not None:
-                directory[name] = (float(lat), float(lng))
-    except (requests.RequestException, ValueError, TypeError) as exc:
-        print(f"[WARNING] Building directory unavailable: {exc}")
+
+        data = response.json()
+
+        if isinstance(data, dict):
+            data = data.get("data", [])
+
+        if not isinstance(data, list):
+            return directory
+
+        for building in data:
+            name = normalize(building.get("name"))
+
+            lat = building.get("lat")
+            lng = building.get("long", building.get("lng"))
+
+            if valid_coords(lat, lng) and name:
+                directory[name] = (
+                    float(lat),
+                    float(lng)
+                )
+
+    except (requests.RequestException, ValueError, TypeError) as e:
+        print("Building API unavailable:", e)
+
     return directory
 
 
-def lookup_coords(location_name, building_directory):
-    key = location_name.strip().lower()
-    if key in ALIAS_OVERRIDES:
-        return (*ALIAS_OVERRIDES[key], "approximate_alias")
-    if key in building_directory:
-        return (*building_directory[key], "building_location")
-    matches = difflib.get_close_matches(key, building_directory.keys(), n=1, cutoff=0.8)
+def match_location(name, directory):
+    key = normalize(name)
+
+    normalized_aliases = {
+        normalize(k): v for k, v in ALIASES.items()
+    }
+
+    if key in normalized_aliases:
+        lat, lng = normalized_aliases[key]
+        return lat, lng, "approximate_alias"
+
+    if key in directory:
+        lat, lng = directory[key]
+        return lat, lng, "building_reference"
+
+    matches = difflib.get_close_matches(
+        key,
+        list(directory.keys()),
+        n=1,
+        cutoff=0.85
+    )
+
     if matches:
-        return (*building_directory[matches[0]], "fuzzy_building_match")
-    return (None, None, "unmatched")
+        lat, lng = directory[matches[0]]
+        return lat, lng, "fuzzy_building_reference"
+
+    return None, None, "unmatched"
 
 
 def parse_date(value):
-    value = value.strip()
-    for fmt in ("%m-%d-%Y %I:%M %p", "%m/%d/%Y %I:%M %p", "%m-%d-%Y", "%m/%d/%Y"):
+    value = str(value or "").strip()
+
+    formats = [
+        "%m-%d-%Y %I:%M %p",
+        "%m/%d/%Y %I:%M %p",
+        "%m-%d-%Y",
+        "%m/%d/%Y",
+        "%Y-%m-%d"
+    ]
+
+    for fmt in formats:
         try:
-            return datetime.strptime(value, fmt).date().isoformat()
+            return datetime.strptime(
+                value, fmt
+            ).date().isoformat()
         except ValueError:
-            pass
+            continue
+
     return None
 
 
 def compute_status(entry):
     today = date.today().isoformat()
-    if entry["start_date"] and entry["start_date"] > today:
-        return "upcoming"
-    if entry["end_date"] and entry["end_date"] < today:
+
+    start = entry.get("start_date")
+    end = entry.get("end_date")
+
+    if end and end < today:
         return "expired"
-    # Missing end date is not proof that a closure is still active.
-    if not entry["end_date"]:
+
+    if start and start > today:
+        return "upcoming"
+
+    if not end:
         return "needs_verification"
+
     return "active"
 
 
-def scrape_disturbances():
-    directory = fetch_building_directory()
-    print(f"Loaded {len(directory)} UMD building locations.")
-    response = requests.get(SOURCE_URL, timeout=20)
+def is_outdoor(location, area, repair_type, description):
+    impact = " ".join([
+        area, repair_type, description
+    ])
+
+    full = " ".join([location, impact])
+
+    return bool(
+        OUTDOOR.search(full)
+        and IMPACT.search(impact)
+    )
+
+
+def make_id(location, area, start, repair_type):
+    raw = "|".join([
+        normalize(location),
+        normalize(area),
+        str(start or ""),
+        normalize(repair_type)
+    ])
+
+    return hashlib.sha256(
+        raw.encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def load_verified():
+    if not VERIFIED_FILE.exists():
+        return {}
+
+    try:
+        data = json.loads(
+            VERIFIED_FILE.read_text(encoding="utf-8")
+        )
+
+        if not isinstance(data, dict):
+            return {}
+
+        return data
+
+    except (OSError, ValueError) as e:
+        print("Verification file error:", e)
+        return {}
+
+
+def scrape():
+    directory = fetch_buildings()
+    verified = load_verified()
+
+    print("Building locations loaded:", len(directory))
+
+    response = requests.get(
+        SOURCE_URL,
+        timeout=25
+    )
     response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
+
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
+
     disturbances = []
-    inspected = 0
+    seen = set()
+
     for table in soup.find_all("table"):
         for row in table.find_all("tr"):
-            cells = [cell.get_text(" ", strip=True) for cell in row.find_all("td")]
+
+            cells = [
+                cell.get_text(" ", strip=True)
+                for cell in row.find_all("td")
+            ]
+
             if len(cells) < 7:
                 continue
-            inspected += 1
-            location, area, start, finish, repair_type, description, impact_type = cells[:7]
-            if not is_outdoor_disturbance(location, area, repair_type, description):
+
+            (
+                location,
+                area,
+                start,
+                finish,
+                repair_type,
+                description,
+                impact_type
+            ) = cells[:7]
+
+            if not is_outdoor(
+                location,
+                area,
+                repair_type,
+                description
+            ):
                 continue
-            lat, lng, coordinate_source = lookup_coords(location, directory)
+
+            start_date = parse_date(start)
+            end_date = parse_date(finish)
+
+            entry_id = make_id(
+                location,
+                area,
+                start_date,
+                repair_type
+            )
+
+            if entry_id in seen:
+                continue
+
+            seen.add(entry_id)
+
+            candidate_lat, candidate_lng, source = (
+                match_location(location, directory)
+            )
+
+            # Candidate coordinates are not published
+            # as verified map coordinates.
             entry = {
-                "id": len(disturbances) + 1,
+                "id": entry_id,
                 "name": location,
                 "area": area,
-                "lat": lat,
-                "lng": lng,
+                "lat": None,
+                "lng": None,
+                "candidate_lat": candidate_lat,
+                "candidate_lng": candidate_lng,
                 "type": repair_type,
                 "description": description,
                 "impact_type": impact_type,
-                "start_date": parse_date(start),
-                "end_date": parse_date(finish),
-                "needs_review": coordinate_source in ("unmatched", "fuzzy_building_match", "approximate_alias"),
-                "coordinate_source": coordinate_source,
-                "source_url": SOURCE_URL,
+                "start_date": start_date,
+                "end_date": end_date,
+                "needs_review": True,
+                "coordinate_source": source,
+                "source_url": SOURCE_URL
             }
+
             entry["status"] = compute_status(entry)
+
+            # Restore manually verified location
+            # only if approved for this exact notice ID.
+            approved = verified.get(entry_id)
+
+            if isinstance(approved, dict):
+                lat = approved.get("lat")
+                lng = approved.get("lng")
+
+                if (
+                    approved.get("verified") is True
+                    and valid_coords(lat, lng)
+                ):
+                    entry["lat"] = float(lat)
+                    entry["lng"] = float(lng)
+                    entry["needs_review"] = False
+                    entry["coordinate_source"] = (
+                        "human_verified"
+                    )
+
             disturbances.append(entry)
-    print(f"Checked {inspected} rows; kept {len(disturbances)} outdoor access disturbances.")
+
     return disturbances
+
+
+def main():
+    data = scrape()
+
+    OUTPUT.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+
+    mapped = sum(
+        1 for d in data
+        if valid_coords(d["lat"], d["lng"])
+        and not d["needs_review"]
+    )
+
+    print("Total notices:", len(data))
+    print("Verified locations:", mapped)
+    print("Awaiting location review:", len(data) - mapped)
+    print("Saved:", OUTPUT)
+
+    for d in data:
+        if d["needs_review"]:
+            print(
+                "[REVIEW]",
+                d["id"],
+                d["name"],
+                d["coordinate_source"]
+            )
 
 
 if __name__ == "__main__":
     try:
-        data = scrape_disturbances()
-        output = Path(__file__).resolve().parent / "disturbances.json"
-        output.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        print(f"Saved {len(data)} entries to {output}")
-        for entry in data:
-            if entry["needs_review"] or entry["status"] == "needs_verification":
-                print(f"[REVIEW] {entry['name']}: {entry['coordinate_source']}; {entry['status']}")
-        print("Review results manually before publishing. Filter may miss ambiguous outdoor notices.")
-    except requests.RequestException as exc:
-        print(f"[ERROR] Could not fetch Facilities page: {exc}")
+        main()
+    except requests.RequestException as e:
+        print("Scraping failed:", e)
         raise SystemExit(1)
