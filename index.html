@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>UMD Campus Disturbance Map (Prototype)</title>
+
+  <!-- Leaflet's CSS file. This gives the map its default look (zoom buttons, popups, etc). -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    /* Basic page styling so the map fills the screen nicely */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    #map {
+      height: 100vh; /* map takes up the full height of the browser window */
+      width: 100%;
+    }
+    #legend {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 10px 14px;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+      z-index: 1000; /* make sure it sits above the map */
+      font-size: 14px;
+    }
+    #legend span.dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- This empty div is where Leaflet will draw the map -->
+  <div id="map"></div>
+
+  <!-- A small legend so viewers know what red vs gray markers mean -->
+  <div id="legend">
+    <div><span class="dot" style="background:red;"></span>Active disturbance</div>
+    <div><span class="dot" style="background:gray;"></span>Expired / resolved</div>
+  </div>
+
+  <!-- Leaflet's JavaScript library. This gives us the map functions we use below. -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // -----------------------------------------------------------
+    // STEP 1: Create the map, centered on the University of Maryland
+    // -----------------------------------------------------------
+    // 38.9869, -76.9426 is roughly the center of UMD's College Park campus.
+    // The "13" is the starting zoom level (higher = more zoomed in).
+    const map = L.map('map').setView([38.9869, -76.9426], 15);
+
+    // Add the actual map imagery (tiles) from Esri's free public tile service.
+    // This does not require an API key or account. We avoid OpenStreetMap's
+    // own tile servers and CartoDB here because both now block or require
+    // a key for requests coming from sandboxed/embedded browser previews.
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    // -----------------------------------------------------------
+    // STEP 2: Load disturbance data from disturbances.json
+    // -----------------------------------------------------------
+    // Instead of writing the data directly in this file, we now
+    // "fetch" (download) it from disturbances.json, which sits in
+    // the same folder as this HTML file. This is the key change
+    // that lets the map update automatically: the scraper script
+    // (scrape_umd_disturbances.py) rewrites disturbances.json on a
+    // schedule, and this page always shows whatever is currently
+    // in that file — no code changes needed when data updates.
+    //
+    // NOTE: because this uses fetch(), opening this file by just
+    // double-clicking it may not work in every browser (some
+    // browsers block fetch() for local "file://" pages for security
+    // reasons). If markers don't show up, run a tiny local server
+    // instead, for example (from a terminal, in this folder):
+    //   python -m http.server 8000
+    // then visit http://localhost:8000 in your browser.
+    fetch('disturbances.json')
+      .then(response => response.json())
+      .then(data => {
+        renderDisturbances(data);
+      })
+      .catch(error => {
+        console.error('Could not load disturbances.json:', error);
+        alert('Could not load disturbances.json. If you opened this file directly (file://), try running a local server instead — see the comment in the code.');
+      });
+
+    // -----------------------------------------------------------
+    // STEP 3: Figure out if each disturbance is still active or expired
+    // -----------------------------------------------------------
+    // We compare today's date to each disturbance's end_date.
+    // If today is AFTER the end_date, the disturbance is expired.
+    const today = new Date();
+
+    function isExpired(disturbance) {
+      const endDate = new Date(disturbance.end_date);
+      return today > endDate;
+    }
+
+    // -----------------------------------------------------------
+    // STEP 4: Loop through every disturbance and add it to the map
+    // -----------------------------------------------------------
+    // This is wrapped in a function now (instead of running directly)
+    // because it needs to wait until STEP 2 has finished downloading
+    // the data from disturbances.json.
+    function renderDisturbances(disturbances) {
+    disturbances.forEach(function (d) {
+      const expired = isExpired(d);
+
+      // Pick a marker color: gray if expired, red if still active.
+      const markerColor = expired ? "gray" : "red";
+
+      // NOTE: We previously drew the full affected area as a line/polygon
+      // here. That has been removed for now (per request) so only the
+      // clickable dot shows. If/when real path data is available from
+      // the pipeline, this is where a line or polygon could be added back.
+
+      // Create a simple colored circle marker instead of the default
+      // Leaflet pin, so color-coding is easy to see at a glance.
+      // cursor: 'pointer' makes it obvious (visually) that the dot is clickable.
+      // This dot sits at the "anchor point" of the closure and is what
+      // people click to see the full details in a popup.
+      const marker = L.circleMarker([d.lat, d.lng], {
+        radius: 9,
+        fillColor: markerColor,
+        color: "#333",       // outline color
+        weight: 1,
+        fillOpacity: expired ? 0.5 : 0.9 // expired markers look faded
+      }).addTo(map);
+
+      // Make the mouse cursor change to a "hand" when hovering over a dot,
+      // so users know it can be clicked.
+      marker.on('mouseover', function () {
+        marker.setStyle({ weight: 3 }); // thicken outline on hover
+      });
+      marker.on('mouseout', function () {
+        marker.setStyle({ weight: 1 });
+      });
+
+      // Build the text that shows up when someone clicks the marker.
+      // The name and type are shown first/largest since that's the
+      // main thing users want to know at a glance.
+      const statusText = expired ? "Resolved / Expired" : "Active";
+      const popupContent = `
+        <div style="min-width:180px;">
+          <strong style="font-size:15px;">${d.name}</strong><br>
+          <span style="text-transform:capitalize; color:${markerColor === 'red' ? '#b30000' : '#555'}; font-weight:bold;">
+            ${d.type}
+          </span><br>
+          <hr style="margin:6px 0;">
+          ${d.description}<br>
+          <small>${d.start_date} to ${d.end_date}</small><br>
+          <strong>Status: ${statusText}</strong>
+        </div>
+      `;
+
+      // bindPopup + clicking the marker (Leaflet's default behavior)
+      // is what makes the dot "interactive" — clicking it opens this popup.
+      marker.bindPopup(popupContent);
+    });
+    } // end of renderDisturbances()
+  </script>
+
+</body>
+</html>
