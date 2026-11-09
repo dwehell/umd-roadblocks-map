@@ -16,8 +16,8 @@
     }
 
     #map {
-      height: 100vh;
       width: 100%;
+      height: 100vh;
     }
 
     #panel {
@@ -25,7 +25,7 @@
       top: 10px;
       right: 10px;
       width: 310px;
-      max-width: calc(100vw - 40px);
+      max-width: calc(100vw - 45px);
       max-height: 85vh;
       overflow-y: auto;
       background: white;
@@ -37,7 +37,7 @@
     }
 
     h3 {
-      margin-top: 0;
+      margin: 0 0 12px;
     }
 
     select, button {
@@ -55,9 +55,12 @@
       cursor: pointer;
     }
 
+    button:hover {
+      background: #8e1017;
+    }
+
     button:disabled {
       background: #aaa;
-      cursor: default;
     }
 
     #message {
@@ -74,38 +77,42 @@
       margin-right: 5px;
     }
 
+    .legend-item {
+      margin: 5px 0;
+    }
+
     .small {
       color: #555;
       font-size: 12px;
+      line-height: 1.5;
     }
   </style>
 </head>
 
 <body>
-
   <div id="map"></div>
 
   <div id="panel">
     <h3>UMD Roadblocks Map</h3>
 
-    <div>
-      <span class="dot" style="background:red"></span>
-      Active / dated notice
+    <div class="legend-item">
+      <span class="dot" style="background:#e53935"></span>
+      Verified active
     </div>
 
-    <div>
-      <span class="dot" style="background:gray"></span>
-      Expired
+    <div class="legend-item">
+      <span class="dot" style="background:#f59e0b"></span>
+      Approximate / awaiting verification
     </div>
 
-    <div>
-      <span class="dot" style="background:orange"></span>
-      Awaiting verification
+    <div class="legend-item">
+      <span class="dot" style="background:#888"></span>
+      Completed / expired
     </div>
 
     <hr>
 
-    <b>Place a disturbance</b>
+    <b>Adjust a location</b>
 
     <select id="disturbanceSelect">
       <option value="">Loading notices...</option>
@@ -122,18 +129,19 @@
     <div id="message">Loading disturbances...</div>
 
     <p class="small">
-      Click a notice, select Place, then click its
-      correct location on the map. Locations you
-      place remain unverified until reviewed.
+      Locations are approximate reference points, not
+      verified closure boundaries. Click a marker for
+      details. The Purple Line notice covers multiple
+      locations and has no single marker.
     </p>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // Create the campus map
+    // 1. Initialize map
     const map = L.map("map").setView(
-      [38.9869, -76.9426], 15
+      [38.9875, -76.9420], 15
     );
 
     L.tileLayer(
@@ -158,7 +166,22 @@
     let selectedIndex = null;
     let placing = false;
 
-    // Prevent external text from being interpreted as HTML
+    // 2. Approximate reference locations for 10 notices.
+    // These are NOT verified closure coordinates.
+    const mappedLocations = {
+      "cc5688a474303206": [38.981623, -76.940519],
+      "0fefd8fe7c43a022": [38.9825, -76.9418],
+      "9bc7dcca1a685325": [38.992178, -76.942998],
+      "c462ddfcdd9fe875": [38.9915, -76.9345],
+      "54474191a01dc954": [38.9899, -76.9365],
+      "ea8a0ac2090a4404": [38.9895, -76.9415],
+      "eb29944003f0e451": [38.9905, -76.9455],
+      "0cd5f9f302bfc090": [38.9867, -76.9475],
+      "64bac5e590fa159e": [38.9905, -76.9395],
+      "cf720a4d9f68b4c2": [38.9950, -76.9480]
+    };
+
+    // 3. Escape text inserted into popup HTML
     function escapeHTML(value) {
       return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -168,7 +191,7 @@
         .replace(/'/g, "&#39;");
     }
 
-    // Validate latitude and longitude
+    // 4. Check coordinates
     function hasCoordinates(d) {
       if (
         d.lat == null ||
@@ -190,19 +213,17 @@
       );
     }
 
-    // Determine whether the notice has expired
     function isExpired(d) {
       if (
         d.status === "expired" ||
         d.status === "resolved" ||
-        d.status === "completed"
+        d.status === "completed" ||
+        String(d.name || "").toLowerCase().includes("completed")
       ) {
         return true;
       }
 
-      if (!d.end_date) {
-        return false;
-      }
+      if (!d.end_date) return false;
 
       const end = new Date(
         d.end_date + "T23:59:59"
@@ -221,7 +242,27 @@
       );
     }
 
-    // Display all notices that have coordinates
+    // 5. Apply approximate locations.
+    // Existing coordinates take priority over these defaults.
+    function applyApproximateLocations() {
+      disturbances.forEach(function(d) {
+        const coords = mappedLocations[d.id];
+
+        if (coords && !hasCoordinates(d)) {
+          d.lat = coords[0];
+          d.lng = coords[1];
+          d.coordinate_source = "approximate_map_reference";
+          d.needs_review = true;
+        }
+
+        // Explicitly marked completed by Facilities.
+        if (d.id === "9bc7dcca1a685325") {
+          d.status = "completed";
+        }
+      });
+    }
+
+    // 6. Draw clickable markers
     function renderMarkers() {
       markerLayer.clearLayers();
 
@@ -238,13 +279,13 @@
         const expired = isExpired(d);
         const unverified = needsVerification(d);
 
-        if (unverified) {
-          review++;
-        }
+        if (unverified) review++;
 
-        const color = unverified
-          ? "orange"
-          : expired ? "gray" : "red";
+        const color = expired
+          ? "#888"
+          : unverified
+            ? "#f59e0b"
+            : "#e53935";
 
         const marker = L.circleMarker(
           [Number(d.lat), Number(d.lng)],
@@ -257,38 +298,22 @@
           }
         ).addTo(markerLayer);
 
-        const name = escapeHTML(
-          d.name || "Unnamed disturbance"
-        );
+        const name = escapeHTML(d.name);
+        const type = escapeHTML(d.type);
+        const area = escapeHTML(d.area);
+        const description = escapeHTML(d.description);
+        const start = escapeHTML(d.start_date || "Unknown");
+        const end = escapeHTML(d.end_date || "Unknown");
+        const source = escapeHTML(d.coordinate_source);
 
-        const type = escapeHTML(
-          d.type || "Unknown"
-        );
-
-        const description = escapeHTML(
-          d.description || "No description"
-        );
-
-        const area = escapeHTML(
-          d.area || "Unknown"
-        );
-
-        const start = escapeHTML(
-          d.start_date || "Unknown"
-        );
-
-        const end = escapeHTML(
-          d.end_date || "Unknown"
-        );
-
-        const status = unverified
-          ? "Awaiting verification"
-          : expired
-            ? "Expired"
-            : "Not marked expired";
+        const status = expired
+          ? "Completed / expired"
+          : unverified
+            ? "Awaiting verification"
+            : "Verified location";
 
         marker.bindPopup(`
-          <div style="min-width:200px">
+          <div style="min-width:210px;max-width:290px">
             <strong>${name}</strong>
             <hr>
             <b>Type:</b> ${type}<br>
@@ -296,7 +321,16 @@
             <b>Description:</b> ${description}<br>
             <b>Start:</b> ${start}<br>
             <b>End:</b> ${end}<br>
-            <b>Status:</b> ${status}
+            <b>Status:</b> ${status}<br>
+            <b>Location source:</b> ${source}<br><br>
+            <small>
+              Approximate point unless independently verified.
+            </small>
+            <br>
+            <a href="https://facilities.umd.edu/info-resources/service-impacts"
+               target="_blank" rel="noopener noreferrer">
+              Official UMD notice
+            </a>
           </div>
         `);
 
@@ -307,79 +341,50 @@
         "Total notices: " + disturbances.length +
         " | Mapped: " + mapped +
         " | Missing coordinates: " + missing +
-        " | Mapped awaiting verification: " + review;
+        " | Awaiting location verification: " + review;
     }
 
-    // Populate the dropdown
+    // 7. Populate dropdown
     function updateDropdown() {
       select.innerHTML = "";
 
       disturbances.forEach(function(d, index) {
-        const option = document.createElement(
-          "option"
-        );
+        const option = document.createElement("option");
 
         option.value = index;
-
         option.textContent =
-          (d.name || "Unnamed notice") +
+          d.name +
           (hasCoordinates(d) ? " (mapped)" : " (unmapped)");
 
         select.appendChild(option);
       });
-
-      if (disturbances.length === 0) {
-        const option = document.createElement(
-          "option"
-        );
-
-        option.textContent = "No notices found";
-        option.value = "";
-        select.appendChild(option);
-      }
     }
 
-    // Start placing a selected notice
+    // 8. Manual adjustment
     document.getElementById(
       "placeButton"
     ).addEventListener("click", function() {
-      if (!disturbances.length) {
-        return;
-      }
+      if (!disturbances.length) return;
 
       selectedIndex = Number(select.value);
 
-      if (
-        !Number.isInteger(selectedIndex) ||
-        !disturbances[selectedIndex]
-      ) {
-        return;
-      }
+      if (!disturbances[selectedIndex]) return;
 
       placing = true;
 
       message.textContent =
-        "Click the correct location on the map for: " +
+        "Click the map to place: " +
         disturbances[selectedIndex].name;
     });
 
-    // Place the marker where the user clicks
     map.on("click", function(event) {
-      if (!placing || selectedIndex === null) {
-        return;
-      }
+      if (!placing || selectedIndex === null) return;
 
       const d = disturbances[selectedIndex];
 
-      d.lat = Number(
-        event.latlng.lat.toFixed(6)
-      );
+      d.lat = Number(event.latlng.lat.toFixed(6));
+      d.lng = Number(event.latlng.lng.toFixed(6));
 
-      d.lng = Number(
-        event.latlng.lng.toFixed(6)
-      );
-
-      // A manually selected point is not automatically verified.
       d.needs_review = true;
       d.coordinate_source = "manual_unverified";
 
@@ -390,16 +395,14 @@
       updateDropdown();
 
       message.textContent =
-        "Location placed. Review its accuracy, then download the updated JSON.";
+        "Location adjusted. Download JSON to save it.";
     });
 
-    // Export the current data
+    // 9. Export updated data
     document.getElementById(
       "downloadButton"
     ).addEventListener("click", function() {
-      const json = JSON.stringify(
-        disturbances, null, 2
-      );
+      const json = JSON.stringify(disturbances, null, 2);
 
       const blob = new Blob(
         [json],
@@ -421,7 +424,7 @@
       }, 1000);
     });
 
-    // Load your real GitHub JSON
+    // 10. Load automatically updated GitHub JSON
     async function loadDisturbances() {
       try {
         const response = await fetch(
@@ -430,21 +433,18 @@
         );
 
         if (!response.ok) {
-          throw new Error(
-            "HTTP " + response.status
-          );
+          throw new Error("HTTP " + response.status);
         }
 
         const data = await response.json();
 
         if (!Array.isArray(data)) {
-          throw new Error(
-            "Expected an array of disturbances"
-          );
+          throw new Error("Expected a JSON array");
         }
 
         disturbances = data;
 
+        applyApproximateLocations();
         updateDropdown();
         renderMarkers();
 
@@ -458,7 +458,14 @@
     }
 
     loadDisturbances();
-  </script>
 
+    // Reload notices every five minutes.
+    // Skip reload while a user is placing a marker.
+    setInterval(function() {
+      if (!placing) {
+        loadDisturbances();
+      }
+    }, 300000);
+  </script>
 </body>
 </html>
