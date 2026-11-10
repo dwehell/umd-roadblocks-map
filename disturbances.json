@@ -1,5 +1,23 @@
 [
   {
+    "id": "c3ccaa5c3a3d5cc0",
+    "name": "Geology Building, Plant Sciences, Hornbake Library",
+    "area": "Exterior West Side Parking Lot Area of the Geology Building",
+    "lat": null,
+    "lng": null,
+    "candidate_lat": null,
+    "candidate_lng": null,
+    "type": "Excavation Work",
+    "description": "Excavation work will be performed to locate an underground leak in an area of the parking lot west of the Geology Building.  Once the leak is located, an air conditioning outage will be needed to accommodate repairs that will impact Hornbake Library.",
+    "impact_type": "Planned",
+    "start_date": "2026-11-17",
+    "end_date": "2026-11-20",
+    "needs_review": true,
+    "coordinate_source": "unmatched",
+    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
+    "status": "upcoming"
+  },
+  {
     "id": "cc5688a474303206",
     "name": "Charles Hall",
     "area": "Southeast Exterior Area",
@@ -124,24 +142,6 @@
     "coordinate_source": "approximate_alias",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
     "status": "active"
-  },
-  {
-    "id": "0cd5f9f302bfc090",
-    "name": "Campus Drive",
-    "area": "From Benjamin Building to Parren J. Mitchell Art-Sociology Building.  Repaving the roadway 11/7; restriping the roadway 11/9",
-    "lat": null,
-    "lng": null,
-    "candidate_lat": 38.9869,
-    "candidate_lng": -76.9426,
-    "type": "Parking Space Closures and Partial Road Closure",
-    "description": "There will be a planned partial roadway closure and parking space closures along a section of Campus Drive from the northeast corner of the Benjamin Building to the southeast corner of the Art-Sociology Building.",
-    "impact_type": "Planned",
-    "start_date": "2026-11-07",
-    "end_date": "2026-11-09",
-    "needs_review": true,
-    "coordinate_source": "approximate_alias",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "expired"
   },
   {
     "id": "64bac5e590fa159e",
