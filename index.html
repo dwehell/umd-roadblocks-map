@@ -271,7 +271,13 @@
             </a>
           </div>
         `);
-
+      // Zoom in when marker is clicked
+        marker.on("click", function() {
+          map.flyTo(marker.getLatLng(), 18, {
+            animate: true,
+            duration: 1.2
+          });
+        });
         mapped++;
       });
 
