@@ -1,271 +1,100 @@
 
-"""UMD outdoor disturbance scraper with automatic location matching."""
-
+    
+  
+"""Scrape UMD outdoor impacts and automatically locate clear campus references.
+Install: pip install requests beautifulsoup4
+"""
+import hashlib
 import json
 import re
-import difflib
-import hashlib
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
-
 import requests
 from bs4 import BeautifulSoup
 
-BASE = Path(__file__).resolve().parent
-SOURCE_URL = "https://facilities.umd.edu/info-resources/service-impacts"
-BUILDINGS_API = "https://api.umd.io/v1/map/buildings"
-OUTPUT = BASE / "disturbances.json"
-
-# Approximate reference points, not exact closure locations.
+ROOT = Path(__file__).resolve().parent
+SOURCE = 'https://facilities.umd.edu/info-resources/service-impacts'
+BUILDINGS = 'https://api.umd.io/v1/map/buildings'
+OUTPUT = ROOT / 'disturbances.json'
+# Approximate reference locations only, NOT verified closures.
 ALIASES = {
-    "regents drive": (38.9895, -76.9415),
-    "parking lot ss1": (38.9905, -76.9455),
-    "campus drive": (38.9869, -76.9426),
-    "stadium drive": (38.9905, -76.9395),
-    "parking lot z": (38.9950, -76.9480),
+    'regents drive': (38.9895, -76.9415),
+    'parking lot ss1': (38.9905, -76.9455),
+    'campus drive': (38.9869, -76.9426),
+    'stadium drive': (38.9905, -76.9395),
+    'parking lot z': (38.9950, -76.9480),
 }
+OUTDOOR = re.compile(r'\b(?:road(?:way)?|street|sidewalk|walkway|path(?:way)?|pedestrian|crosswalk|intersection|bridge|trail|bike\s*lane|parking\s*(?:lot|garage|area)|bus\s*stop|shuttle\s*stop|vehicle\s*access|traffic|detour|outdoor\s*access)\b', re.I)
+IMPACT = re.compile(r'\b(?:clos(?:ed|ure|ing)|block(?:ed|age|ing)?|restrict(?:ed|ion|ions)?|detour(?:ed|s)?|inaccessible|impassable|rerout(?:e|ed|ing)|repair(?:s)?|construction|excavat(?:ion|ing)|resurfac(?:ing|e)|pav(?:e|ing|ement)|temporarily unavailable|partial(?:ly)?\s+closed)\b', re.I)
 
-OUTDOOR = re.compile(
-    r"\b(?:road(?:way)?|street|sidewalk|walkway|"
-    r"path(?:way)?|pedestrian|crosswalk|intersection|"
-    r"bridge|trail|bike\s*lane|parking\s*(?:lot|garage|area)|"
-    r"bus\s*stop|shuttle\s*stop|vehicle\s*access|"
-    r"traffic|detour|outdoor\s*access)\b",
-    re.I
-)
+def norm(s):
+    return ' '.join(re.sub(r'[^\w\s]', ' ', str(s or '').lower()).split())
 
-IMPACT = re.compile(
-    r"\b(?:clos(?:ed|ure|ing)|block(?:ed|age|ing)?|"
-    r"restrict(?:ed|ion|ions)?|detour(?:ed|s)?|"
-    r"inaccessible|impassable|rerout(?:e|ed|ing)|"
-    r"repair(?:s)?|construction|excavat(?:ion|ing)|"
-    r"resurfac(?:ing|e)|pav(?:e|ing|ement)|"
-    r"temporarily unavailable|partial(?:ly)?\s+closed)\b",
-    re.I
-)
-
-
-def normalize(value):
-    return " ".join(
-        re.sub(r"[^\w\s]", " ", str(value or "").lower()).split()
-    )
-
-
-def valid_coords(lat, lng):
+def valid(lat, lng):
     try:
-        return (
-            lat is not None
-            and lng is not None
-            and 38.8 <= float(lat) <= 39.1
-            and -77.1 <= float(lng) <= -76.8
-        )
-    except (ValueError, TypeError):
+        return lat is not None and lng is not None and 38.8 <= float(lat) <= 39.1 and -77.1 <= float(lng) <= -76.8
+    except (TypeError, ValueError):
         return False
 
-
 def fetch_buildings():
-    directory = {}
-
+    result = {}
     try:
-        response = requests.get(BUILDINGS_API, timeout=20)
-        response.raise_for_status()
-        data = response.json()
+        # Endpoint may be paginated; fetch successive pages if indicated.
+        url = BUILDINGS
+        visited = set()
+        for _ in range(30):
+            if url in visited:
+                break
+            visited.add(url)
+            response = requests.get(url, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload if isinstance(payload, list) else payload.get('data', [])
+            if isinstance(rows, dict):
+                rows = [rows]
+            if not isinstance(rows, list):
+                break
+            for b in rows:
+                if not isinstance(b, dict):
+                    continue
+                if valid(b.get('lat'), b.get('long', b.get('lng'))):
+                    coords = (float(b['lat']), float(b.get('long', b.get('lng'))))
+                    for label in (b.get('name'), b.get('code')):
+                        key = norm(label)
+                        if key and len(key) >= 3:
+                            result[key] = coords
+            next_url = response.links.get('next', {}).get('url')
+            if not next_url:
+                break
+            url = next_url
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        print('Building API unavailable or incomplete:', exc)
+    return result
 
-        if isinstance(data, dict):
-            data = data.get("data", [])
+def find_mentions(text, locations):
+    """Find whole-name matches, preferring longer names over substrings."""
+    normalized = norm(text)
+    hits = []
+    for name, coords in locations.items():
+        if re.search(r'(?<!\w)' + re.escape(name) + r'(?!\w)', normalized):
+            hits.append((name, coords))
+    hits.sort(key=lambda item: len(item[0]), reverse=True)
+    chosen = []
+    for name, coords in hits:
+        if not any(name in bigger for bigger, _ in chosen):
+            chosen.append((name, coords))
+    return chosen
 
-        for building in data if isinstance(data, list) else []:
-            if not isinstance(building, dict):
-                continue
+def locate(location, area, description, directory):
+    """Use the location field first, then area, then description.
+    Never silently select one of several different mentioned places.
+    """
+    references = {**directory, **{norm(k): v for k, v in ALIASES.items()}}
+    for field, label in ((location, 'location'), (area, 'area'), (description, 'description')):
+        hits = find_mentions(field, references)
+        unique = {tuple(coords) for _, coords in hits}
+        if len(unique) == 1:
+            coords = next(iter(unique))
+            return coords[0], coords[1], f'approximate_{label}_reference', True
+        if len(unique) > 1:
 
-            name = normalize(building.get("name"))
-            lat = building.get("lat")
-            lng = building.get("long", building.get("lng"))
-
-            if name and valid_coords(lat, lng):
-                directory[name] = (float(lat), float(lng))
-
-    except (requests.RequestException, ValueError, TypeError) as e:
-        print("Building API unavailable:", e)
-
-    return directory
-
-
-def match_location(name, directory):
-    key = normalize(name)
-
-    if not key:
-        return None, None, "unmatched", True
-
-    # Avoid assigning one marker to multiple locations.
-    if (
-        re.search(r"[,;/]", str(name))
-        or re.search(r"\b(and|between|multiple)\b", key)
-    ):
-        return None, None, "multiple_or_ambiguous_locations", True
-
-    if key in ALIASES:
-        return *ALIASES[key], "approximate_road_reference", True
-
-    if key in directory:
-        return *directory[key], "building_reference", True
-
-    matches = difflib.get_close_matches(
-        key, list(directory), n=2, cutoff=0.92
-    )
-
-    if len(matches) == 1:
-        return (
-            *directory[matches[0]],
-            "fuzzy_building_reference",
-            True
-        )
-
-    return None, None, "unmatched", True
-
-
-def parse_date(value):
-    formats = [
-        "%m-%d-%Y %I:%M %p",
-        "%m/%d/%Y %I:%M %p",
-        "%m-%d-%Y",
-        "%m/%d/%Y",
-        "%Y-%m-%d"
-    ]
-
-    for fmt in formats:
-        try:
-            return datetime.strptime(
-                str(value or "").strip(), fmt
-            ).date().isoformat()
-        except ValueError:
-            continue
-
-    return None
-
-
-def compute_status(start, end):
-    today = date.today().isoformat()
-
-    if end and end < today:
-        return "expired"
-
-    if start and start > today:
-        return "upcoming"
-
-    if not end:
-        return "needs_verification"
-
-    return "active"
-
-
-def scrape():
-    directory = fetch_buildings()
-    print("Building locations loaded:", len(directory))
-
-    response = requests.get(SOURCE_URL, timeout=25)
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    results = []
-    seen = set()
-
-    for table in soup.find_all("table"):
-        for row in table.find_all("tr"):
-            cells = [
-                cell.get_text(" ", strip=True)
-                for cell in row.find_all("td")
-            ]
-
-            if len(cells) < 7:
-                continue
-
-            (
-                location,
-                area,
-                start,
-                finish,
-                repair_type,
-                description,
-                impact_type
-            ) = cells[:7]
-
-            impact = " ".join((area, repair_type, description))
-
-            if not (
-                OUTDOOR.search(" ".join((location, impact)))
-                and IMPACT.search(impact)
-            ):
-                continue
-
-            start_date = parse_date(start)
-            end_date = parse_date(finish)
-
-            raw = "|".join((
-                normalize(location),
-                normalize(area),
-                str(start_date or ""),
-                normalize(repair_type)
-            ))
-
-            entry_id = hashlib.sha256(
-                raw.encode("utf-8")
-            ).hexdigest()[:16]
-
-            if entry_id in seen:
-                continue
-
-            seen.add(entry_id)
-
-            lat, lng, source, review = match_location(
-                location, directory
-            )
-
-            results.append({
-                "id": entry_id,
-                "name": location,
-                "area": area,
-                "lat": lat,
-                "lng": lng,
-                "candidate_lat": lat,
-                "candidate_lng": lng,
-                "type": repair_type,
-                "description": description,
-                "impact_type": impact_type,
-                "start_date": start_date,
-                "end_date": end_date,
-                "needs_review": review,
-                "coordinate_source": source,
-                "source_url": SOURCE_URL,
-                "status": compute_status(start_date, end_date)
-            })
-
-    return results
-
-
-def main():
-    data = scrape()
-
-    OUTPUT.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
-        encoding="utf-8"
-    )
-
-    mapped = sum(
-        valid_coords(d["lat"], d["lng"])
-        for d in data
-    )
-
-    print("Total notices:", len(data))
-    print("Automatically mapped:", mapped)
-    print("Unmapped:", len(data) - mapped)
-    print("Saved:", OUTPUT)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except requests.RequestException as e:
-        print("Scraping failed:", e)
-        raise SystemExit(1)
