@@ -92,17 +92,7 @@ hr {
 
   <div class="legend-item">
     <span class="dot" style="background:#e53935"></span>
-    Verified active
-  </div>
-
-  <div class="legend-item">
-    <span class="dot" style="background:#f59e0b"></span>
-    Approximate / awaiting verification
-  </div>
-
-  <div class="legend-item">
-    <span class="dot" style="background:#888"></span>
-    Completed / expired
+    Disturbance location
   </div>
 
   <hr>
@@ -116,14 +106,14 @@ hr {
   <div id="unmapped"></div>
 
   <p class="small">
-    Locations are automatically matched to approximate
-    campus reference points. Orange markers require
-    verification.
+    Disturbance locations are automatically identified
+    using campus location data.
   </p>
 
   <p class="small">
     Click a marker to zoom in and view details.
-    Markers do not represent exact closure boundaries.
+    Markers indicate reference locations, not exact
+    closure boundaries.
   </p>
 </div>
 
@@ -202,19 +192,11 @@ function isExpired(d) {
   );
 }
 
-function needsVerification(d) {
-  return (
-    d.needs_review !== false ||
-    d.status === "needs_verification"
-  );
-}
-
 function renderMarkers() {
   markerLayer.clearLayers();
 
   let mapped = 0;
   let missing = 0;
-  let review = 0;
 
   const unmapped = [];
 
@@ -229,26 +211,14 @@ function renderMarkers() {
       return;
     }
 
-    const expired = isExpired(d);
-    const unverified = needsVerification(d);
-
-    if (unverified) {
-      review++;
-    }
-
-    const color = expired
-      ? "#888"
-      : unverified
-        ? "#f59e0b"
-        : "#e53935";
-
+    // All markers are red
     const marker = L.circleMarker(
       [Number(d.lat), Number(d.lng)],
       {
         radius: 9,
         color: "#333",
         weight: 1,
-        fillColor: color,
+        fillColor: "#e53935",
         fillOpacity: 0.9
       }
     ).addTo(markerLayer);
@@ -259,13 +229,14 @@ function renderMarkers() {
     const description = escapeHTML(d.description);
     const start = escapeHTML(d.start_date || "Unknown");
     const end = escapeHTML(d.end_date || "Unknown");
-    const source = escapeHTML(d.coordinate_source);
 
-    const status = expired
+    const status = isExpired(d)
       ? "Completed / expired"
-      : unverified
-        ? "Approximate / awaiting verification"
-        : "Verified location";
+      : d.status === "upcoming"
+        ? "Upcoming"
+        : d.status === "needs_verification"
+          ? "End date not confirmed"
+          : "Reported disturbance";
 
     const sourceUrl =
       typeof d.source_url === "string" &&
@@ -284,10 +255,9 @@ function renderMarkers() {
         <b>Description:</b> ${description}<br>
         <b>Start:</b> ${start}<br>
         <b>End:</b> ${end}<br>
-        <b>Status:</b> ${status}<br>
-        <b>Location source:</b> ${source}<br><br>
+        <b>Status:</b> ${status}<br><br>
         <small>
-          Approximate reference point unless verified.
+          Reference location, not an exact closure boundary.
         </small>
         <br><br>
         <a href="${escapeHTML(sourceUrl)}"
@@ -298,7 +268,7 @@ function renderMarkers() {
       </div>
     `);
 
-    // Smoothly zoom when clicking a marker
+    // Zoom when marker is clicked
     marker.on("click", function() {
       map.flyTo(marker.getLatLng(), 18, {
         animate: true,
@@ -313,11 +283,10 @@ function renderMarkers() {
     "Total notices: " + disturbances.length +
     " | Mapped: " + mapped +
     " | Missing coordinates: " + missing +
-    " | Awaiting location verification: " + review +
     " | Last checked: " +
     new Date().toLocaleTimeString();
 
-  // Show notices without coordinates
+  // List notices without coordinates
   unmappedBox.innerHTML = unmapped.length
     ? "<hr><b>Not pinned (location unclear)</b>" +
       unmapped.map(function(d) {
@@ -351,7 +320,6 @@ async function loadDisturbances() {
     }
 
     disturbances = data;
-
     renderMarkers();
 
   } catch (error) {
@@ -365,7 +333,7 @@ async function loadDisturbances() {
 
 loadDisturbances();
 
-// Reload data every 5 minutes
+// Refresh every 5 minutes
 setInterval(loadDisturbances, 300000);
 </script>
 
