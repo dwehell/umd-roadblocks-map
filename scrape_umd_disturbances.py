@@ -1,20 +1,5 @@
 
-"""UMD outdoor disturbance scraper with location matching.
-
-Install:
-    pip install requests beautifulsoup4
-
-Run:
-    python scrape_umd_disturbances.py
-
-Files:
-    disturbances.json       Automatically generated
-    verified_locations.json Optional manual location approvals
-
-Only verified coordinates are published as map-ready.
-Building coordinates are approximate reference points, not
-exact roadblock locations.
-"""
+"""UMD outdoor disturbance scraper with automatic location matching."""
 
 import json
 import re
@@ -27,18 +12,11 @@ import requests
 from bs4 import BeautifulSoup
 
 BASE = Path(__file__).resolve().parent
-
-SOURCE_URL = (
-    "https://facilities.umd.edu/info-resources/service-impacts"
-)
-
+SOURCE_URL = "https://facilities.umd.edu/info-resources/service-impacts"
 BUILDINGS_API = "https://api.umd.io/v1/map/buildings"
-
 OUTPUT = BASE / "disturbances.json"
-VERIFIED_FILE = BASE / "verified_locations.json"
 
-# These are approximate reference points only.
-# They must NOT be treated as verified closure locations.
+# Approximate reference points, not exact closure locations.
 ALIASES = {
     "regents drive": (38.9895, -76.9415),
     "parking lot ss1": (38.9905, -76.9455),
@@ -68,24 +46,18 @@ IMPACT = re.compile(
 
 
 def normalize(value):
-    value = str(value or "").lower().strip()
-    value = re.sub(r"[^\w\s]", " ", value)
-    return " ".join(value.split())
+    return " ".join(
+        re.sub(r"[^\w\s]", " ", str(value or "").lower()).split()
+    )
 
 
 def valid_coords(lat, lng):
     try:
-        if lat is None or lng is None:
-            return False
-        if str(lat).strip() == "" or str(lng).strip() == "":
-            return False
-
-        lat = float(lat)
-        lng = float(lng)
-
         return (
-            38.8 <= lat <= 39.1
-            and -77.1 <= lng <= -76.8
+            lat is not None
+            and lng is not None
+            and 38.8 <= float(lat) <= 39.1
+            and -77.1 <= float(lng) <= -76.8
         )
     except (ValueError, TypeError):
         return False
@@ -95,31 +67,23 @@ def fetch_buildings():
     directory = {}
 
     try:
-        response = requests.get(
-            BUILDINGS_API,
-            timeout=20
-        )
+        response = requests.get(BUILDINGS_API, timeout=20)
         response.raise_for_status()
-
         data = response.json()
 
         if isinstance(data, dict):
             data = data.get("data", [])
 
-        if not isinstance(data, list):
-            return directory
+        for building in data if isinstance(data, list) else []:
+            if not isinstance(building, dict):
+                continue
 
-        for building in data:
             name = normalize(building.get("name"))
-
             lat = building.get("lat")
             lng = building.get("long", building.get("lng"))
 
-            if valid_coords(lat, lng) and name:
-                directory[name] = (
-                    float(lat),
-                    float(lng)
-                )
+            if name and valid_coords(lat, lng):
+                directory[name] = (float(lat), float(lng))
 
     except (requests.RequestException, ValueError, TypeError) as e:
         print("Building API unavailable:", e)
@@ -130,35 +94,37 @@ def fetch_buildings():
 def match_location(name, directory):
     key = normalize(name)
 
-    normalized_aliases = {
-        normalize(k): v for k, v in ALIASES.items()
-    }
+    if not key:
+        return None, None, "unmatched", True
 
-    if key in normalized_aliases:
-        lat, lng = normalized_aliases[key]
-        return lat, lng, "approximate_alias"
+    # Avoid assigning one marker to multiple locations.
+    if (
+        re.search(r"[,;/]", str(name))
+        or re.search(r"\b(and|between|multiple)\b", key)
+    ):
+        return None, None, "multiple_or_ambiguous_locations", True
+
+    if key in ALIASES:
+        return *ALIASES[key], "approximate_road_reference", True
 
     if key in directory:
-        lat, lng = directory[key]
-        return lat, lng, "building_reference"
+        return *directory[key], "building_reference", True
 
     matches = difflib.get_close_matches(
-        key,
-        list(directory.keys()),
-        n=1,
-        cutoff=0.85
+        key, list(directory), n=2, cutoff=0.92
     )
 
-    if matches:
-        lat, lng = directory[matches[0]]
-        return lat, lng, "fuzzy_building_reference"
+    if len(matches) == 1:
+        return (
+            *directory[matches[0]],
+            "fuzzy_building_reference",
+            True
+        )
 
-    return None, None, "unmatched"
+    return None, None, "unmatched", True
 
 
 def parse_date(value):
-    value = str(value or "").strip()
-
     formats = [
         "%m-%d-%Y %I:%M %p",
         "%m/%d/%Y %I:%M %p",
@@ -170,7 +136,7 @@ def parse_date(value):
     for fmt in formats:
         try:
             return datetime.strptime(
-                value, fmt
+                str(value or "").strip(), fmt
             ).date().isoformat()
         except ValueError:
             continue
@@ -178,11 +144,8 @@ def parse_date(value):
     return None
 
 
-def compute_status(entry):
+def compute_status(start, end):
     today = date.today().isoformat()
-
-    start = entry.get("start_date")
-    end = entry.get("end_date")
 
     if end and end < today:
         return "expired"
@@ -196,74 +159,20 @@ def compute_status(entry):
     return "active"
 
 
-def is_outdoor(location, area, repair_type, description):
-    impact = " ".join([
-        area, repair_type, description
-    ])
-
-    full = " ".join([location, impact])
-
-    return bool(
-        OUTDOOR.search(full)
-        and IMPACT.search(impact)
-    )
-
-
-def make_id(location, area, start, repair_type):
-    raw = "|".join([
-        normalize(location),
-        normalize(area),
-        str(start or ""),
-        normalize(repair_type)
-    ])
-
-    return hashlib.sha256(
-        raw.encode("utf-8")
-    ).hexdigest()[:16]
-
-
-def load_verified():
-    if not VERIFIED_FILE.exists():
-        return {}
-
-    try:
-        data = json.loads(
-            VERIFIED_FILE.read_text(encoding="utf-8")
-        )
-
-        if not isinstance(data, dict):
-            return {}
-
-        return data
-
-    except (OSError, ValueError) as e:
-        print("Verification file error:", e)
-        return {}
-
-
 def scrape():
     directory = fetch_buildings()
-    verified = load_verified()
-
     print("Building locations loaded:", len(directory))
 
-    response = requests.get(
-        SOURCE_URL,
-        timeout=25
-    )
+    response = requests.get(SOURCE_URL, timeout=25)
     response.raise_for_status()
 
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    disturbances = []
+    results = []
     seen = set()
 
     for table in soup.find_all("table"):
         for row in table.find_all("tr"):
-
             cells = [
                 cell.get_text(" ", strip=True)
                 for cell in row.find_all("td")
@@ -282,77 +191,57 @@ def scrape():
                 impact_type
             ) = cells[:7]
 
-            if not is_outdoor(
-                location,
-                area,
-                repair_type,
-                description
+            impact = " ".join((area, repair_type, description))
+
+            if not (
+                OUTDOOR.search(" ".join((location, impact)))
+                and IMPACT.search(impact)
             ):
                 continue
 
             start_date = parse_date(start)
             end_date = parse_date(finish)
 
-            entry_id = make_id(
-                location,
-                area,
-                start_date,
-                repair_type
-            )
+            raw = "|".join((
+                normalize(location),
+                normalize(area),
+                str(start_date or ""),
+                normalize(repair_type)
+            ))
+
+            entry_id = hashlib.sha256(
+                raw.encode("utf-8")
+            ).hexdigest()[:16]
 
             if entry_id in seen:
                 continue
 
             seen.add(entry_id)
 
-            candidate_lat, candidate_lng, source = (
-                match_location(location, directory)
+            lat, lng, source, review = match_location(
+                location, directory
             )
 
-            # Candidate coordinates are not published
-            # as verified map coordinates.
-            entry = {
+            results.append({
                 "id": entry_id,
                 "name": location,
                 "area": area,
-                "lat": None,
-                "lng": None,
-                "candidate_lat": candidate_lat,
-                "candidate_lng": candidate_lng,
+                "lat": lat,
+                "lng": lng,
+                "candidate_lat": lat,
+                "candidate_lng": lng,
                 "type": repair_type,
                 "description": description,
                 "impact_type": impact_type,
                 "start_date": start_date,
                 "end_date": end_date,
-                "needs_review": True,
+                "needs_review": review,
                 "coordinate_source": source,
-                "source_url": SOURCE_URL
-            }
+                "source_url": SOURCE_URL,
+                "status": compute_status(start_date, end_date)
+            })
 
-            entry["status"] = compute_status(entry)
-
-            # Restore manually verified location
-            # only if approved for this exact notice ID.
-            approved = verified.get(entry_id)
-
-            if isinstance(approved, dict):
-                lat = approved.get("lat")
-                lng = approved.get("lng")
-
-                if (
-                    approved.get("verified") is True
-                    and valid_coords(lat, lng)
-                ):
-                    entry["lat"] = float(lat)
-                    entry["lng"] = float(lng)
-                    entry["needs_review"] = False
-                    entry["coordinate_source"] = (
-                        "human_verified"
-                    )
-
-            disturbances.append(entry)
-
-    return disturbances
+    return results
 
 
 def main():
@@ -364,24 +253,14 @@ def main():
     )
 
     mapped = sum(
-        1 for d in data
-        if valid_coords(d["lat"], d["lng"])
-        and not d["needs_review"]
+        valid_coords(d["lat"], d["lng"])
+        for d in data
     )
 
     print("Total notices:", len(data))
-    print("Verified locations:", mapped)
-    print("Awaiting location review:", len(data) - mapped)
+    print("Automatically mapped:", mapped)
+    print("Unmapped:", len(data) - mapped)
     print("Saved:", OUTPUT)
-
-    for d in data:
-        if d["needs_review"]:
-            print(
-                "[REVIEW]",
-                d["id"],
-                d["name"],
-                d["coordinate_source"]
-            )
 
 
 if __name__ == "__main__":
