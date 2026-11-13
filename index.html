@@ -2,328 +2,372 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UMD Roadblocks Map</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UMD Roadblocks Map</title>
 
-  <link rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-    }
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
 
-    #map {
-      width: 100%;
-      height: 100vh;
-    }
+#map {
+  width: 100%;
+  height: 100vh;
+}
 
-    #panel {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 310px;
-      max-width: calc(100vw - 45px);
-      max-height: 85vh;
-      overflow-y: auto;
-      background: white;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 2px 10px #777;
-      z-index: 1000;
-      font-size: 14px;
-    }
+#panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 310px;
+  max-width: calc(100vw - 45px);
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #303030;
+  color: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px #555;
+  z-index: 1000;
+  font-size: 14px;
+}
 
-    h3 {
-      margin: 0 0 12px;
-    }
+h3 {
+  margin: 0 0 12px;
+}
 
-    #message {
-      font-size: 13px;
-      margin-top: 10px;
-      line-height: 1.6;
-    }
+#message {
+  font-size: 13px;
+  margin-top: 10px;
+  line-height: 1.6;
+}
 
-    .dot {
-      display: inline-block;
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      margin-right: 5px;
-    }
+.dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
 
-    .legend-item {
-      margin: 5px 0;
-    }
+.legend-item {
+  margin: 5px 0;
+}
 
-    .small {
-      color: #555;
-      font-size: 12px;
-      line-height: 1.5;
-    }
-  </style>
+.small {
+  color: #ccc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.unmapped-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #555;
+}
+
+#unmapped {
+  max-height: 230px;
+  overflow-y: auto;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #666;
+  margin: 12px 0;
+}
+</style>
 </head>
 
 <body>
-  <div id="map"></div>
 
-  <div id="panel">
-    <h3>UMD Roadblocks Map</h3>
+<div id="map"></div>
 
-    <div class="legend-item">
-      <span class="dot" style="background:#e53935"></span>
-      Verified active
-    </div>
+<div id="panel">
+  <h3>UMD Roadblocks Map</h3>
 
-    <div class="legend-item">
-      <span class="dot" style="background:#f59e0b"></span>
-      Approximate / awaiting verification
-    </div>
-
-    <div class="legend-item">
-      <span class="dot" style="background:#888"></span>
-      Completed / expired
-    </div>
-
-    <hr>
-
-    <b>Automatic Location Status</b>
-
-    <div id="message" aria-live="polite">
-      Loading disturbances...
-    </div>
-
-    <p class="small">
-      Locations are automatically matched to approximate
-      campus reference points. Orange markers need
-      location verification.
-    </p>
-
-    <p class="small">
-      Click a marker for details. Markers do not represent
-      exact closure boundaries. Notices covering multiple
-      locations may not have a single marker.
-    </p>
+  <div class="legend-item">
+    <span class="dot" style="background:#e53935"></span>
+    Verified active
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <div class="legend-item">
+    <span class="dot" style="background:#f59e0b"></span>
+    Approximate / awaiting verification
+  </div>
 
-  <script>
-    // Initialize map
-    const map = L.map("map").setView(
-      [38.9875, -76.9420], 15
+  <div class="legend-item">
+    <span class="dot" style="background:#888"></span>
+    Completed / expired
+  </div>
+
+  <hr>
+
+  <b>Automatic Location Status</b>
+
+  <div id="message">
+    Loading disturbances...
+  </div>
+
+  <div id="unmapped"></div>
+
+  <p class="small">
+    Locations are automatically matched to approximate
+    campus reference points. Orange markers require
+    verification.
+  </p>
+
+  <p class="small">
+    Click a marker to zoom in and view details.
+    Markers do not represent exact closure boundaries.
+  </p>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const map = L.map("map").setView(
+  [38.9875, -76.9420], 15
+);
+
+L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  {
+    attribution: "Tiles &copy; Esri",
+    maxZoom: 19
+  }
+).addTo(map);
+
+const markerLayer = L.layerGroup().addTo(map);
+
+const message = document.getElementById("message");
+const unmappedBox = document.getElementById("unmapped");
+
+let disturbances = [];
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function hasCoordinates(d) {
+  if (
+    d.lat == null ||
+    d.lng == null ||
+    d.lat === "" ||
+    d.lng === ""
+  ) {
+    return false;
+  }
+
+  const lat = Number(d.lat);
+  const lng = Number(d.lng);
+
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= 38.974 &&
+    lat <= 39.001 &&
+    lng >= -76.960 &&
+    lng <= -76.925
+  );
+}
+
+function isExpired(d) {
+  if (
+    d.status === "expired" ||
+    d.status === "resolved" ||
+    d.status === "completed"
+  ) {
+    return true;
+  }
+
+  if (!d.end_date) return false;
+
+  const end = new Date(
+    d.end_date + "T23:59:59"
+  );
+
+  return (
+    !isNaN(end.getTime()) &&
+    new Date() > end
+  );
+}
+
+function needsVerification(d) {
+  return (
+    d.needs_review !== false ||
+    d.status === "needs_verification"
+  );
+}
+
+function renderMarkers() {
+  markerLayer.clearLayers();
+
+  let mapped = 0;
+  let missing = 0;
+  let review = 0;
+
+  const unmapped = [];
+
+  disturbances.forEach(function(d) {
+    if (!hasCoordinates(d)) {
+      missing++;
+
+      if (!isExpired(d)) {
+        unmapped.push(d);
+      }
+
+      return;
+    }
+
+    const expired = isExpired(d);
+    const unverified = needsVerification(d);
+
+    if (unverified) {
+      review++;
+    }
+
+    const color = expired
+      ? "#888"
+      : unverified
+        ? "#f59e0b"
+        : "#e53935";
+
+    const marker = L.circleMarker(
+      [Number(d.lat), Number(d.lng)],
+      {
+        radius: 9,
+        color: "#333",
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 0.9
+      }
+    ).addTo(markerLayer);
+
+    const name = escapeHTML(d.name);
+    const type = escapeHTML(d.type);
+    const area = escapeHTML(d.area);
+    const description = escapeHTML(d.description);
+    const start = escapeHTML(d.start_date || "Unknown");
+    const end = escapeHTML(d.end_date || "Unknown");
+    const source = escapeHTML(d.coordinate_source);
+
+    const status = expired
+      ? "Completed / expired"
+      : unverified
+        ? "Approximate / awaiting verification"
+        : "Verified location";
+
+    const sourceUrl =
+      typeof d.source_url === "string" &&
+      d.source_url.startsWith(
+        "https://facilities.umd.edu/"
+      )
+        ? d.source_url
+        : "https://facilities.umd.edu/info-resources/service-impacts";
+
+    marker.bindPopup(`
+      <div style="min-width:210px;max-width:290px">
+        <strong>${name}</strong>
+        <hr>
+        <b>Type:</b> ${type}<br>
+        <b>Area:</b> ${area}<br>
+        <b>Description:</b> ${description}<br>
+        <b>Start:</b> ${start}<br>
+        <b>End:</b> ${end}<br>
+        <b>Status:</b> ${status}<br>
+        <b>Location source:</b> ${source}<br><br>
+        <small>
+          Approximate reference point unless verified.
+        </small>
+        <br><br>
+        <a href="${escapeHTML(sourceUrl)}"
+           target="_blank"
+           rel="noopener noreferrer">
+          Official UMD notice
+        </a>
+      </div>
+    `);
+
+    // Smoothly zoom when clicking a marker
+    marker.on("click", function() {
+      map.flyTo(marker.getLatLng(), 18, {
+        animate: true,
+        duration: 1.2
+      });
+    });
+
+    mapped++;
+  });
+
+  message.textContent =
+    "Total notices: " + disturbances.length +
+    " | Mapped: " + mapped +
+    " | Missing coordinates: " + missing +
+    " | Awaiting location verification: " + review +
+    " | Last checked: " +
+    new Date().toLocaleTimeString();
+
+  // Show notices without coordinates
+  unmappedBox.innerHTML = unmapped.length
+    ? "<hr><b>Not pinned (location unclear)</b>" +
+      unmapped.map(function(d) {
+        return `
+          <div class="unmapped-item">
+            <b>${escapeHTML(d.name)}</b>
+            <div class="small">
+              ${escapeHTML(d.type)}
+            </div>
+          </div>
+        `;
+      }).join("")
+    : "";
+}
+
+async function loadDisturbances() {
+  try {
+    const response = await fetch(
+      "./disturbances.json?t=" + Date.now(),
+      { cache: "no-store" }
     );
 
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-      {
-        attribution: "Tiles &copy; Esri",
-        maxZoom: 19
-      }
-    ).addTo(map);
-
-    const markerLayer = L.layerGroup().addTo(map);
-
-    const message = document.getElementById("message");
-
-    let disturbances = [];
-
-    // Escape popup text
-    function escapeHTML(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
     }
 
-    // Check coordinates
-    function hasCoordinates(d) {
-      if (
-        d.lat == null ||
-        d.lng == null ||
-        d.lat === "" ||
-        d.lng === ""
-      ) {
-        return false;
-      }
+    const data = await response.json();
 
-      const lat = Number(d.lat);
-      const lng = Number(d.lng);
-
-      return (
-        Number.isFinite(lat) &&
-        Number.isFinite(lng) &&
-        lat >= 38.8 && lat <= 39.1 &&
-        lng >= -77.1 && lng <= -76.8
-      );
+    if (!Array.isArray(data)) {
+      throw new Error("Expected a JSON array");
     }
 
-    // Check expired status
-    function isExpired(d) {
-      if (
-        d.status === "expired" ||
-        d.status === "resolved" ||
-        d.status === "completed"
-      ) {
-        return true;
-      }
+    disturbances = data;
 
-      if (!d.end_date) return false;
+    renderMarkers();
 
-      const end = new Date(
-        d.end_date + "T23:59:59"
-      );
+  } catch (error) {
+    console.error(error);
 
-      return (
-        !isNaN(end.getTime()) &&
-        new Date() > end
-      );
-    }
+    message.textContent =
+      "Could not load disturbances.json: " +
+      error.message;
+  }
+}
 
-    // Check verification
-    function needsVerification(d) {
-      return (
-        d.needs_review !== false ||
-        d.status === "needs_verification"
-      );
-    }
+loadDisturbances();
 
-    // Draw markers
-    function renderMarkers() {
-      markerLayer.clearLayers();
+// Reload data every 5 minutes
+setInterval(loadDisturbances, 300000);
+</script>
 
-      let mapped = 0;
-      let missing = 0;
-      let review = 0;
-
-      disturbances.forEach(function(d) {
-        if (!hasCoordinates(d)) {
-          missing++;
-          return;
-        }
-
-        const expired = isExpired(d);
-        const unverified = needsVerification(d);
-
-        if (unverified) review++;
-
-        const color = expired
-          ? "#888"
-          : unverified
-            ? "#f59e0b"
-            : "#e53935";
-
-        const marker = L.circleMarker(
-          [Number(d.lat), Number(d.lng)],
-          {
-            radius: 9,
-            color: "#333",
-            weight: 1,
-            fillColor: color,
-            fillOpacity: 0.9
-          }
-        ).addTo(markerLayer);
-
-        const name = escapeHTML(d.name);
-        const type = escapeHTML(d.type);
-        const area = escapeHTML(d.area);
-        const description = escapeHTML(d.description);
-        const start = escapeHTML(d.start_date || "Unknown");
-        const end = escapeHTML(d.end_date || "Unknown");
-        const source = escapeHTML(d.coordinate_source);
-
-        const status = expired
-          ? "Completed / expired"
-          : unverified
-            ? "Awaiting verification"
-            : "Verified location";
-
-        const sourceUrl =
-          typeof d.source_url === "string" &&
-          d.source_url.startsWith(
-            "https://facilities.umd.edu/"
-          )
-            ? d.source_url
-            : "https://facilities.umd.edu/info-resources/service-impacts";
-
-        marker.bindPopup(`
-          <div style="min-width:210px;max-width:290px">
-            <strong>${name}</strong>
-            <hr>
-            <b>Type:</b> ${type}<br>
-            <b>Area:</b> ${area}<br>
-            <b>Description:</b> ${description}<br>
-            <b>Start:</b> ${start}<br>
-            <b>End:</b> ${end}<br>
-            <b>Status:</b> ${status}<br>
-            <b>Location source:</b> ${source}<br><br>
-            <small>
-              Approximate point unless independently verified.
-            </small>
-            <br>
-            <a href="${escapeHTML(sourceUrl)}"
-               target="_blank" rel="noopener noreferrer">
-              Official UMD notice
-            </a>
-          </div>
-        `);
-      // Zoom in when marker is clicked
-        marker.on("click", function() {
-          map.flyTo(marker.getLatLng(), 18, {
-            animate: true,
-            duration: 1.2
-          });
-        });
-        mapped++;
-      });
-
-      message.textContent =
-        "Total notices: " + disturbances.length +
-        " | Mapped: " + mapped +
-        " | Missing coordinates: " + missing +
-        " | Awaiting location verification: " + review +
-        " | Last checked: " +
-        new Date().toLocaleTimeString();
-    }
-
-    // Load GitHub JSON
-    async function loadDisturbances() {
-      try {
-        const response = await fetch(
-          "./disturbances.json?t=" + Date.now(),
-          { cache: "no-store" }
-        );
-
-        if (!response.ok) {
-          throw new Error("HTTP " + response.status);
-        }
-
-        const data = await response.json();
-
-        if (!Array.isArray(data)) {
-          throw new Error("Expected a JSON array");
-        }
-
-        disturbances = data;
-        renderMarkers();
-
-      } catch (error) {
-        console.error(error);
-
-        message.textContent =
-          "Could not load disturbances.json: " +
-          error.message;
-      }
-    }
-
-    loadDisturbances();
-
-    // Refresh every five minutes
-    setInterval(loadDisturbances, 300000);
-  </script>
 </body>
 </html>
