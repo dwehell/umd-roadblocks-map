@@ -29,11 +29,11 @@
     "description": "Emergency excavation work will occur in the southeast exterior area of Charles Hall and will result in a sidewalk and southeast entrance closure.  This is to locate and perform emergency repairs to an underground leak occurring in this area.",
     "impact_type": "Emergency",
     "start_date": "2026-10-31",
-    "end_date": null,
+    "end_date": "2026-11-16",
     "needs_review": true,
     "coordinate_source": "unmatched",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "needs_verification"
+    "status": "active"
   },
   {
     "id": "0fefd8fe7c43a022",
