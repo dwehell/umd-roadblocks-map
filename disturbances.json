@@ -36,24 +36,6 @@
     "status": "active"
   },
   {
-    "id": "cc5688a474303206",
-    "name": "Charles Hall",
-    "area": "Southeast Exterior Area",
-    "lat": null,
-    "lng": null,
-    "candidate_lat": null,
-    "candidate_lng": null,
-    "type": "Sidewalk Closure, Entrance Closure, Excavation Work",
-    "description": "Emergency excavation work will occur in the southeast exterior area of Charles Hall and will result in a sidewalk and southeast entrance closure.  This is to locate and perform emergency repairs to an underground leak occurring in this area.",
-    "impact_type": "Emergency",
-    "start_date": "2026-10-31",
-    "end_date": "2026-11-16",
-    "needs_review": true,
-    "coordinate_source": "unmatched",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "expired"
-  },
-  {
     "id": "0fefd8fe7c43a022",
     "name": "Washington Quad",
     "area": "Area south of Prince George's Hall and northeast of Baltimore Hall.",
