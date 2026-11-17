@@ -1,5 +1,23 @@
 [
   {
+    "id": "09d2275913a4b809",
+    "name": "C. Daniel Mote, Jr. Engineering Laboratory Building",
+    "area": "Exterior north of the building",
+    "lat": 38.98926235,
+    "lng": -76.9379467111811,
+    "candidate_lat": 38.98926235,
+    "candidate_lng": -76.9379467111811,
+    "type": "Entrance Closure, Sidewalk Closure",
+    "description": "Closures of the northwest ADA entrance, north side high bay roll-up door, and the surrounding sidewalk area north of the C. Daniel Mote, Jr. Engineering Laboratory Building to accommodate the installation of additional bike racks in this area.",
+    "impact_type": "Planned",
+    "start_date": "2026-11-23",
+    "end_date": "2026-12-04",
+    "needs_review": true,
+    "coordinate_source": "approximate_building_location",
+    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
+    "status": "upcoming"
+  },
+  {
     "id": "c3ccaa5c3a3d5cc0",
     "name": "Geology Building, Plant Sciences, Hornbake Library",
     "area": "Exterior West Side Parking Lot Area of the Geology Building",
@@ -15,7 +33,7 @@
     "needs_review": true,
     "coordinate_source": "approximate_building_cluster_location",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "upcoming"
+    "status": "active"
   },
   {
     "id": "cc5688a474303206",
@@ -33,7 +51,7 @@
     "needs_review": true,
     "coordinate_source": "unmatched",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "active"
+    "status": "expired"
   },
   {
     "id": "0fefd8fe7c43a022",
