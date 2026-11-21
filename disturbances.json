@@ -69,7 +69,7 @@
     "needs_review": true,
     "coordinate_source": "approximate_building_cluster_location",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "active"
+    "status": "expired"
   },
   {
     "id": "0fefd8fe7c43a022",
@@ -177,7 +177,7 @@
     "needs_review": true,
     "coordinate_source": "unmatched",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "upcoming"
+    "status": "active"
   },
   {
     "id": "ea8a0ac2090a4404",
@@ -195,7 +195,7 @@
     "needs_review": true,
     "coordinate_source": "approximate_fallback_location",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "active"
+    "status": "expired"
   },
   {
     "id": "64bac5e590fa159e",
