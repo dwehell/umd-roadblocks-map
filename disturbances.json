@@ -54,24 +54,6 @@
     "status": "active"
   },
   {
-    "id": "c3ccaa5c3a3d5cc0",
-    "name": "Geology Building, Plant Sciences, Hornbake Library",
-    "area": "Exterior West Side Parking Lot Area of the Geology Building",
-    "lat": 38.98815355,
-    "lng": -76.94124202492276,
-    "candidate_lat": 38.98815355,
-    "candidate_lng": -76.94124202492276,
-    "type": "Excavation Work",
-    "description": "Excavation work will be performed to locate an underground leak in an area of the parking lot west of the Geology Building.  Once the leak is located, an air conditioning outage will be needed to accommodate repairs that will impact Hornbake Library.",
-    "impact_type": "Planned",
-    "start_date": "2026-11-17",
-    "end_date": "2026-11-20",
-    "needs_review": true,
-    "coordinate_source": "approximate_building_cluster_location",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "expired"
-  },
-  {
     "id": "0fefd8fe7c43a022",
     "name": "Washington Quad",
     "area": "Area south of Prince George's Hall and northeast of Baltimore Hall.",
@@ -88,24 +70,6 @@
     "coordinate_source": "unmatched",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
     "status": "needs_verification"
-  },
-  {
-    "id": "14332cada8eac055",
-    "name": "Cambridge Community Quad",
-    "area": "Bel Air Hall, south side of the building; Centreville Hall, west side of the building; Cambridge Hall, north side of the building; Cumberland Hall, east side of the building.",
-    "lat": 38.99281705,
-    "lng": -76.9426116,
-    "candidate_lat": 38.99281705,
-    "candidate_lng": -76.9426116,
-    "type": "Concrete Work and Sidewalk Closures",
-    "description": "**Completed** Planned concrete repair work will be performed on damaged areas of sidewalk throughout the Cambridge Community Quad to address trip hazards and improve structural integrity.",
-    "impact_type": "Planned",
-    "start_date": "2026-10-21",
-    "end_date": "2026-11-20",
-    "needs_review": true,
-    "coordinate_source": "approximate_building_area",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "completed"
   },
   {
     "id": "672b2c7cd0732dbc",
@@ -178,24 +142,6 @@
     "coordinate_source": "unmatched",
     "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
     "status": "active"
-  },
-  {
-    "id": "ea8a0ac2090a4404",
-    "name": "Regents Drive",
-    "area": "South of Stadium Drive Intersection",
-    "lat": 38.9895,
-    "lng": -76.9415,
-    "candidate_lat": 38.9895,
-    "candidate_lng": -76.9415,
-    "type": "Overnight Lane Closures and Sidewalk Closures",
-    "description": "Overnight single-lane closures of the southbound and northbound lanes and the surrounding sidewalks in an area of Regents Drive south of the Stadium Drive intersection to accommodate excavation work.",
-    "impact_type": "Planned",
-    "start_date": "2026-11-09",
-    "end_date": "2026-11-20",
-    "needs_review": true,
-    "coordinate_source": "approximate_fallback_location",
-    "source_url": "https://facilities.umd.edu/info-resources/service-impacts",
-    "status": "expired"
   },
   {
     "id": "64bac5e590fa159e",
